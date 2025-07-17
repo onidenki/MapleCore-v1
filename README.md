@@ -81,10 +81,10 @@ NEXT_PUBLIC_API_URL=http://your-public-ip:3000
 # NEXT_PUBLIC_API_URL=https://yourdomain.com     (domain name)
 
 # Hostname Configuration (NEW)
-NEXT_PUBLIC_HOSTNAME=5.107.164.162
+NEXT_PUBLIC_HOSTNAME=your-public-ip
 # Examples:
 # NEXT_PUBLIC_HOSTNAME=192.168.1.100
-# NEXT_PUBLIC_HOSTNAME=2.123.42.32
+# NEXT_PUBLIC_HOSTNAME=your-public-ip
 # NEXT_PUBLIC_HOSTNAME=yourdomain.com
 
 # CORS Configuration (NEW)
