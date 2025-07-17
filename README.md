@@ -186,11 +186,10 @@ pm2 startup
 MIT License
 
 ## 🙏 Acknowledgments
-MapleStory community, OdinMS/HeavenMS, Next.js, React contributors
+MapleStory community, Cosmicms, Next.js, React contributors
 
 ## 📞 Support
-- Discord: Join our server  
-- GitHub Issues  
-- Email: support@maplekaede.com  
+- Discord: ARtistjr
+- GitHub Issues contact me discord.
 
 Made with ❤️ for the MapleStory community.
