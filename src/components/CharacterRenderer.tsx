@@ -12,11 +12,11 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
   const [imageCache, setImageCache] = useState<{ [key: string]: HTMLImageElement | null }>({});
 
   // Constants from PHP (exact same values)
-  const mainX = 44;
-  const mainY = 34;
-  const neckY = 65;
-  const CANVAS_WIDTH = 96;
-  const CANVAS_HEIGHT = 96;
+  const mainX = 100;  // Centered horizontally (200/2 = 100)
+  const mainY = 90;   // Slightly above center for better visual balance
+  const neckY = 121;  // Adjusted accordingly (90 + 31 offset from original)
+  const CANVAS_WIDTH = 200;
+  const CANVAS_HEIGHT = 200;
 
   // Default gender clothes (exact same as PHP)
   const defaultClothes: { [key: number]: { coat: number; pants: number } } = {
@@ -66,7 +66,11 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     
     for (const part of parts) {
       if (!current) return null;
-      current = current.querySelector(part);
+      
+      // Search through children by tag name (case-insensitive)
+      current = Array.from(current.children).find(child => 
+        child.tagName === part || child.tagName.toLowerCase() === part.toLowerCase()
+      ) || null;
     }
     
     return current?.textContent || null;
@@ -77,9 +81,11 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     return value ? parseInt(value, 10) : 0;
   };
 
-  // Helper: Use/load image (like PHP useImage method)
+  // Helper: Use/load image
   const useImage = async (location: string, x: number = 0, y: number = 0): Promise<void> => {
-    if (!await exists(location)) return;
+    if (!await exists(location)) {
+      return;
+    }
     
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
@@ -108,7 +114,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     });
   };
 
-  // setVaribles method (exact PHP port)
+  // setVaribles method
   const setVaribles = async (): Promise<void> => {
     const dataMap = {
       "Skin": character.skincolor,
@@ -131,13 +137,17 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     for (const [key, value] of Object.entries(dataMap)) {
       if (value !== undefined && value !== null) {
         let processedValue: string | number = value;
+        let pathPrefix = "0"; // Default prefix for most items
         
-        // Special formatting for Hair and Face
+        // Special formatting for different types
         if (key === "Hair" || key === "Face") {
           processedValue = `00${value}`;
+        } else if (key === "Weapon" && typeof value === 'number') {
+          processedValue = value.toString().padStart(8, '0');
+          pathPrefix = "";
         }
         
-        const xml = await XMLoader(`${key}/0${processedValue}.img/`);
+        const xml = await XMLoader(`${key}/${pathPrefix}${processedValue}.img/`);
         characterData[key] = {
           ID: processedValue,
           xml: xml
@@ -146,7 +156,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // setWepInfo method (exact PHP port)
+  // setWepInfo method
   const setWepInfo = async (weapon: number): Promise<void> => {
     const weaponIdPadded = weapon.toString().padStart(8, '0');
     const Location = `Weapon/${weaponIdPadded}.img/`;
@@ -154,17 +164,35 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     if (await exists(Location + "coord.xml")) {
       const xml = await XMLoader(Location);
       if (xml && weapon < 1700000) {
-        const standValue = getXMLNumber(xml, '_info.stand.value');
-        if (standValue) {
-          stand = standValue;
+        const standPaths = [
+          '_info.stand.value',
+          '_info.stand2.value', 
+          '_info.stand1.value',
+          '_info.stand'
+        ];
+        
+        let foundStand = false;
+        for (const path of standPaths) {
+          const standValue = getXMLNumber(xml, path);
+          if (standValue > 0) {
+            stand = standValue;
+            foundStand = true;
+            break;
+          }
         }
+        
+        if (!foundStand) {
+          stand = 2;
+        }
+      } else {
+        stand = 2;
       }
     } else {
-      stand = 1;
+      stand = 2;
     }
   };
 
-  // setFace method (exact PHP port)
+  // setFace method
   const setFace = async (): Promise<void> => {
     if (characterData.Face?.ID) {
       if (!vSlot.includes('Fc')) {
@@ -177,7 +205,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // setHair method (exact PHP port)
+  // setHair method
   const setHair = async (z: string): Promise<void> => {
     switch (z) {
       case "hair":
@@ -203,7 +231,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // setAHair method (exact PHP port)
+  // setAHair method
   const setAHair = async (z: string): Promise<void> => {
     const zArray: { [key: string]: string[] } = {
       "hair": ["hair"],
@@ -255,7 +283,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // setAccessory method (exact PHP port)
+  // setAccessory method
   const setAccessory = async (aType: string, z: string): Promise<void> => {
     const zArray: { [key: string]: string[] } = {
       "accessoryEye": ["default"],
@@ -299,7 +327,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // setCap method (exact PHP port)
+  // setCap method
   const setCap = async (z: string): Promise<void> => {
     const zArray: { [key: string]: string[] } = {
       "cap": ["default", "default1", "default3", "defaultTail", "0"],
@@ -343,7 +371,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // setCape method (exact PHP port)
+  // setCape method
   const setCape = async (z: string): Promise<void> => {
     const zArray: { [key: string]: string[] } = {
       "cape": ["cape", "capeArm", "capeOverHead", "capeOverArm"],
@@ -370,7 +398,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // setShield method (exact PHP port)
+  // setShield method
   const setShield = async (z?: string): Promise<void> => {
     if (!characterData.Shield?.ID) return;
 
@@ -379,7 +407,6 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     if (shieldId < 1090000) {
       await setWeapon("weaponOverArmBelowHead");
     } else if (shieldId > 1340000 && shieldId < 1360000) {
-      // Secondary weapon - not handled this way anymore
       return;
     } else if (characterData.Shield.xml && z == null) {
       const shieldX = mainX + getXMLNumber(characterData.Shield.xml, '_shield.stand1.x');
@@ -388,7 +415,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // setShoes method (exact PHP port)
+  // setShoes method
   const setShoes = async (z: string): Promise<void> => {
     const zArray: { [key: string]: string[] } = {
       "shoes": ["shoes"],
@@ -417,7 +444,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // setGlove method (exact PHP port)
+  // setGlove method
   const setGlove = async (pos: string, standParam?: number): Promise<void> => {
     const canvasArray: { [key: string]: { [key: string]: string[] } } = {
       "r": { 
@@ -439,8 +466,9 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
         for (const canvas of canvases) {
           if (await exists(`Glove/0${characterData.Glove.ID}.img/${ss}.0.${canvas}.png`)) {
             const type = `_${canvas}`;
-            const gloveX = mainX + getXMLNumber(characterData.Glove.xml, `${type}${snd}.x`);
-            const gloveY = neckY + getXMLNumber(characterData.Glove.xml, `${type}${snd}.y`);
+            const gloveX = mainX + getXMLNumber(characterData.Glove.xml, `${type}.${snd}.x`);
+            const gloveY = neckY + getXMLNumber(characterData.Glove.xml, `${type}.${snd}.y`);
+            
             await useImage(`Glove/0${characterData.Glove.ID}.img/${ss}.0.${canvas}.png`, gloveX, gloveY);
           }
         }
@@ -448,7 +476,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // setPants method (exact PHP port)
+  // setPants method
   const setPants = async (): Promise<void> => {
     if (!characterData.Pants?.ID) {
       const defaultPantsId = defaultClothes[characterData.Gender?.ID as number]?.pants;
@@ -456,7 +484,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
         await useImage(`Pants/0${defaultPantsId}.img/stand1.0.pants.png`, mainX - 3, neckY + 1);
       }
     } else if ((characterData.Coat?.ID as number) >= 1050000) {
-      return; // Longcoat covers pants
+      return;
     } else if (characterData.Pants.xml) {
       const snd = `_stand${stand}`;
       const pantsX = mainX + getXMLNumber(characterData.Pants.xml, `_pants${snd}.x`);
@@ -470,7 +498,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // setCoat method (exact PHP port)
+  // setCoat method
   const setCoat = async (type: string): Promise<void> => {
     const coatId = characterData.Coat?.ID as number;
     const folder = (coatId >= 1050000) ? "Longcoat" : "Coat";
@@ -510,7 +538,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // setWeapon method (exact PHP port)
+  // setWeapon method
   const setWeapon = async (z: string): Promise<void> => {
     const wepArray: { [key: string]: string[] } = {
       "weapon": ["weapon", "effect", "weaponFront"],
@@ -531,19 +559,19 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
       "emotionOverBody": ["effect"]
     };
 
-    // Special case for secondary weapons (Katara, Dualbow)
+    // Special case for secondary weapons
     if (z === "weaponOverArmBelowHead" && characterData.Shield?.ID && 
         (characterData.Shield.ID as number) > 1340000 && (characterData.Shield.ID as number) < 1350000) {
-      const Location = `Weapon/0${characterData.Shield.ID}.img/`;
+      const Location = `Weapon/${characterData.Shield.ID}.img/`;
       if (await exists(Location + "coord.xml")) {
         const xml = await XMLoader(Location);
         if (xml) {
           const weaponStandValue = getXMLNumber(xml, '_info.stand.value');
           const snd = `_stand${weaponStandValue}`;
           const ss = `stand${weaponStandValue}`;
-          const shieldX = mainX + getXMLNumber(xml, `_weapon${snd}.x`);
-          const shieldY = neckY + getXMLNumber(xml, `_weapon${snd}.y`);
-          await useImage(`Weapon/0${characterData.Shield.ID}.img/${ss}.0.weapon.png`, shieldX, shieldY);
+          const shieldX = mainX + getXMLNumber(xml, `_weapon.${snd}.x`);
+          const shieldY = neckY + getXMLNumber(xml, `_weapon.${snd}.y`);
+          await useImage(`Weapon/${characterData.Shield.ID}.img/${ss}.0.weapon.png`, shieldX, shieldY);
         }
       }
       return;
@@ -553,51 +581,99 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
       const snd = `_stand${stand}`;
       const ss = `stand${stand}`;
       
+      // Get weapon NUM value
       let wepNUM = "";
-      const wepNUMValue = getXMLValue(characterData.Weapon.xml, `_info.${ss}.NUM`);
-      if (wepNUMValue) {
-        wepNUM = wepNUMValue + ".";
+      const numPaths = [
+        `_info.${ss}.NUM`,
+        '_info.stand1.NUM',
+        '_info.stand2.NUM',
+        '_info.NUM'
+      ];
+      
+      for (const path of numPaths) {
+        const value = getXMLValue(characterData.Weapon.xml, path);
+        if (value) {
+          wepNUM = value;
+          break;
+        }
       }
 
       const types = wepArray[z] || [];
+      
       for (const type of types) {
         const weap = `_${type}`;
         const weapElement = characterData.Weapon.xml.querySelector(weap);
         if (weapElement) {
-          const zValue = getXMLValue(characterData.Weapon.xml, `${weap}${snd}.z`);
+          const zValue = getXMLValue(characterData.Weapon.xml, `${weap}.${snd}.z`);
+          
           if (zValue === z) {
-            const wepX = mainX + getXMLNumber(characterData.Weapon.xml, `${weap}${snd}.x`);
-            const wepY = neckY + getXMLNumber(characterData.Weapon.xml, `${weap}${snd}.y`);
-            await useImage(`Weapon/0${characterData.Weapon.ID}.img/${wepNUM}${ss}.0.${type}.png`, wepX, wepY);
+            const wepX = mainX + getXMLNumber(characterData.Weapon.xml, `${weap}.${snd}.x`);
+            const wepY = neckY + getXMLNumber(characterData.Weapon.xml, `${weap}.${snd}.y`);
+            
+            // Build correct image path
+            let imagePath: string;
+            if (wepNUM) {
+              imagePath = `Weapon/${characterData.Weapon.ID}.img/${wepNUM}.${ss}.0.${type}.png`;
+            } else {
+              imagePath = `Weapon/${characterData.Weapon.ID}.img/${ss}.0.${type}.png`;
+            }
+            
+            const imageExists = await exists(imagePath);
+            
+            if (imageExists) {
+              await useImage(imagePath, wepX, wepY);
+            } else {
+              // Try with different stand values
+              const otherStand = stand === 1 ? 2 : 1;
+              const altSs = `stand${otherStand}`;
+              let altImagePath: string;
+              
+              if (wepNUM) {
+                altImagePath = `Weapon/${characterData.Weapon.ID}.img/${wepNUM}.${altSs}.0.${type}.png`;
+              } else {
+                altImagePath = `Weapon/${characterData.Weapon.ID}.img/${altSs}.0.${type}.png`;
+              }
+              
+              const altExists = await exists(altImagePath);
+              
+              if (altExists) {
+                const altSnd = `_stand${otherStand}`;
+                const altWepX = mainX + getXMLNumber(characterData.Weapon.xml, `${weap}.${altSnd}.x`);
+                const altWepY = neckY + getXMLNumber(characterData.Weapon.xml, `${weap}.${altSnd}.y`);
+                
+                await useImage(altImagePath, altWepX, altWepY);
+              }
+            }
+            break;
           }
         }
       }
     }
   };
 
-  // createBody method (exact PHP port)
+  // createBody method
   const createBody = async (type: string): Promise<void> => {
-    const skin = 2000 + (characterData.Skin?.ID as number);
+    const skin = `0000${2000 + (characterData.Skin?.ID as number)}`;
     
     switch (type) {
       case "head":
-        await useImage(`Skin/0000${skin}.img/front.head.png`, mainX - 15, mainY - 12);
+        await useImage(`Skin/${skin}.img/front.head.png`, mainX - 15, mainY - 12);
         break;
       case "body":
-        await useImage(`Skin/0000${skin}.img/stand${stand}.0.body.png`, (mainX + stand) - 9, mainY + 21);
+        await useImage(`Skin/${skin}.img/stand${stand}.0.body.png`, (mainX + stand) - 9, mainY + 21);
         break;
       case "arm":
-        await useImage(`Skin/0000${skin}.img/stand${stand}.0.arm.png`, mainX + (stand === 2 ? 4 : 8), mainY + 23);
+        await useImage(`Skin/${skin}.img/stand${stand}.0.arm.png`, mainX + (stand === 2 ? 4 : 8), mainY + 23);
         break;
       case "hand":
         if (stand === 2) {
-          await useImage(`Skin/0000${skin}.img/stand2.0.hand.png`, mainX - 10, mainY + 26);
+          await useImage(`Skin/${skin}.img/stand2.0.hand.png`, mainX - 10, mainY + 26);
         }
         break;
     }
   };
 
-  // Main render function following EXACT PHP sequence from create.php
+  // Main render function
   const renderCharacter = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -609,14 +685,12 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     try {
-      // Initialize character data (like PHP setVaribles)
       await setVaribles();
-
-      // Set weapon info (handle null weapon like PHP)
+      
       const weaponId = character.equipment?.weapon || 1;
       await setWepInfo(weaponId);
 
-      // Follow EXACT PHP rendering sequence from create.php
+      // Render sequence
       await setWeapon('weaponBelowBody');
       await setCap('capeBelowBody');
       await setCap('capBelowHead');
@@ -633,7 +707,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
       await createBody('body');
       await setShoes('shoes');
       await setShoes('weaponOverBody');
-      await setGlove('l', 1);
+      await setGlove('l');
       await setWeapon('weaponOverBody');
       await setPants();
       await setCoat('mail');
@@ -654,7 +728,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
       await setAccessory('Eyes', 'accessoryEyeBelowFace');
       await setFace();
       await setAccessory('Mask', 'accessoryFace');
-      await setCap('accessoryEyeOverCap');
+      await setCap('accessoryEyeOverCap'); 
       await setAccessory('Eyes', 'accessoryEye');
       await setCap('accessoryEar');
       await setHair('hair');

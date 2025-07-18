@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { verifyToken } from '@/lib/security/password';
+import { secureQueries } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get top characters with guild information
+    // Get top characters with guild information and character data
     const rankings = await query<any>(
       `SELECT 
         c.id,
@@ -29,13 +30,26 @@ export async function GET(request: NextRequest) {
         c.fame,
         c.accountid,
         c.guildid,
+        c.skincolor,
+        c.gender,
+        c.hair,
+        c.face,
+        c.str,
+        c.dex,
+        c.int,
+        c.luk,
+        c.meso,
         g.name as guild_name
       FROM characters c
       LEFT JOIN guilds g ON c.guildid = g.guildid AND c.guildid > 0
-      WHERE c.gm = 0
+      WHERE c.gm >= 0
       ORDER BY c.level DESC, c.exp DESC
       LIMIT 100`
     );
+
+    // Get equipment for all characters at once
+    const characterIds = rankings.map((char: any) => char.id);
+    const allEquipment = await secureQueries.getCharactersEquipment(characterIds);
 
     // Format rankings
     const formattedRankings = rankings.map((char: any, index: number) => ({
@@ -49,7 +63,20 @@ export async function GET(request: NextRequest) {
       guild: char.guild_name || '',
       fame: char.fame || 0,
       accountId: char.accountid,
-      isCurrentUser: currentUserId === char.accountid
+      isCurrentUser: currentUserId === char.accountid,
+      // Add character appearance data
+      skincolor: char.skincolor || 0,
+      gender: char.gender || 0,
+      hair: char.hair || 30000,
+      face: char.face || 20000,
+      equipment: allEquipment[char.id] || {},
+      stats: {
+        str: char.str || 4,
+        dex: char.dex || 4,
+        int: char.int || 4,
+        luk: char.luk || 4
+      },
+      meso: char.meso || 0
     }));
 
     // Find user's ranking if logged in
@@ -74,22 +101,34 @@ export async function GET(request: NextRequest) {
             c.job,
             c.fame,
             c.guildid,
+            c.skincolor,
+            c.gender,
+            c.hair,
+            c.face,
+            c.str,
+            c.dex,
+            c.int,
+            c.luk,
+            c.meso,
             g.name as guild_name,
             (
               SELECT COUNT(*) + 1 
               FROM characters c2 
-              WHERE c2.gm = 0 
+              WHERE c2.gm >= 0
               AND (c2.level > c.level OR (c2.level = c.level AND c2.exp > c.exp))
             ) as user_rank
           FROM characters c
           LEFT JOIN guilds g ON c.guildid = g.guildid AND c.guildid > 0
-          WHERE c.accountid = ? AND c.gm = 0
+          WHERE c.accountid = ? AND c.gm >= 0
           ORDER BY c.level DESC, c.exp DESC
           LIMIT 1`,
           [currentUserId]
         );
 
         if (userChar) {
+          // Get equipment for this user character
+          const userEquipment = await secureQueries.getCharacterEquipment(userChar.id);
+          
           userRanking = {
             rank: userChar.user_rank,
             id: userChar.id,
@@ -101,7 +140,20 @@ export async function GET(request: NextRequest) {
             guild: userChar.guild_name || '',
             fame: userChar.fame || 0,
             accountId: currentUserId,
-            isCurrentUser: true
+            isCurrentUser: true,
+            // Add character appearance data for user ranking
+            skincolor: userChar.skincolor || 0,
+            gender: userChar.gender || 0,
+            hair: userChar.hair || 30000,
+            face: userChar.face || 20000,
+            equipment: userEquipment,
+            stats: {
+              str: userChar.str || 4,
+              dex: userChar.dex || 4,
+              int: userChar.int || 4,
+              luk: userChar.luk || 4
+            },
+            meso: userChar.meso || 0
           };
         }
       }

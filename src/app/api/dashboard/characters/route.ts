@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { secureQueries } from '@/lib/db';
-import { query } from '@/lib/db'; // Import the query function for direct queries
 
 export const GET = requireAuth(async (req: AuthenticatedRequest) => {
   try {
@@ -11,67 +10,19 @@ export const GET = requireAuth(async (req: AuthenticatedRequest) => {
     // Get all user's characters with appearance data
     const characters = await secureQueries.getCharactersByAccountId(userId);
 
+    // Get equipment for all characters at once (more efficient)
+    const characterIds = characters.map((char: any) => char.id);
+    const allEquipment = await secureQueries.getCharactersEquipment(characterIds);
+
     // Format characters data with equipment
-    const formattedCharacters = await Promise.all(characters.map(async (char: any) => {
-      // Get equipment for this character
-      const equipmentQuery = `
-        SELECT itemid, position
-        FROM inventoryitems
-        WHERE characterid = ? AND inventorytype = -1
-      `;
-      
-      const equipmentRows = await query(equipmentQuery, [char.id]);
-      
-      // Map equipment positions to equipment slots
-      const equipment: any = {};
+    const formattedCharacters = characters.map((char: any) => {
+      // Get equipment for this character from the batch query
+      const equipment = allEquipment[char.id] || {};
 
-      // First pass: Add regular items
-      equipmentRows.forEach((item: any) => {
-        let slot: string | null = null;
-        
-        // Map regular equipment positions
-        switch(item.position) {
-          case -1: slot = 'cap'; break;
-          case -2: slot = 'mask'; break;
-          case -3: slot = 'eyes'; break;
-          case -4: slot = 'ears'; break;
-          case -5: slot = 'coat'; break;
-          case -6: slot = 'pants'; break;
-          case -7: slot = 'shoes'; break;
-          case -8: slot = 'glove'; break;
-          case -9: slot = 'cape'; break;
-          case -10: slot = 'shield'; break;
-          case -11: slot = 'weapon'; break;
-        }
-        
-        if (slot) {
-          equipment[slot] = item.itemid;
-        }
-      });
-
-      // Second pass: Override with cash items (they take priority)
-      equipmentRows.forEach((item: any) => {
-        let slot: string | null = null;
-        
-        // Map cash equipment positions
-        switch(item.position) {
-          case -101: slot = 'cap'; break;
-          case -102: slot = 'mask'; break;
-          case -103: slot = 'eyes'; break;
-          case -104: slot = 'ears'; break;
-          case -105: slot = 'coat'; break;
-          case -106: slot = 'pants'; break;
-          case -107: slot = 'shoes'; break;
-          case -108: slot = 'glove'; break;
-          case -109: slot = 'cape'; break;
-          case -110: slot = 'shield'; break;
-          case -111: slot = 'weapon'; break;
-        }
-        
-        if (slot) {
-          equipment[slot] = item.itemid; // This overwrites the regular item
-        }
-      });
+      // Debug log equipment for first character
+      if (char.id === 1) {
+        console.log('Character 1 equipment from DB:', equipment);
+      }
 
       // Calculate exp percentage (simplified)
       const expToNextLevel = getExpForLevel(char.level + 1);
@@ -99,14 +50,14 @@ export const GET = requireAuth(async (req: AuthenticatedRequest) => {
           int: char.int || 4,
           luk: char.luk || 4
         },
-        // Add equipment
+        // Add equipment - this now includes proper cash item override logic
         equipment: equipment,
         // Additional useful data
         fame: char.fame || 0,
         map: char.map || 0,
         guildid: char.guildid || 0
       };
-    }));
+    });
 
     return NextResponse.json({ characters: formattedCharacters });
 

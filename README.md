@@ -60,6 +60,9 @@ npm install --legacy-peer-deps
 ### Step 3: Configure Environment
 Create a `.env.local` file:
 ```env
+# Server name for the logo in the user dashboard
+NEXT_PUBLIC_SERVER_NAME=MapleKaede
+
 # Database Configuration (if MySQL is on same machine)
 DB_HOST=localhost
 DB_PORT=3306
