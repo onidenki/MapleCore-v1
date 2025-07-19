@@ -31,7 +31,7 @@ export const GET = requireAuth(async (req: AuthenticatedRequest) => {
     const clientIp = getClientIp(req);
     const hashedIp = hashIp(clientIp);
 
-    // Get user info
+    // Get user info - getting nxCredit which is what we update
     const user = await queryOne<any>(
       'SELECT nxCredit, votepoints FROM accounts WHERE id = ?',
       [userId]
@@ -41,7 +41,7 @@ export const GET = requireAuth(async (req: AuthenticatedRequest) => {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Vote sites configuration
+    // Vote sites configuration with Gtop100 URL format
     const sites = [
       {
         id: 1,
@@ -100,7 +100,7 @@ export const GET = requireAuth(async (req: AuthenticatedRequest) => {
         }
       }
 
-      // Check IP cooldown
+      // Check IP cooldown (overrides user cooldown if later)
       if (ipCooldown) {
         const ipLastVoteTime = new Date(ipCooldown.last_vote_time);
         const ipNextVoteTime = new Date(ipLastVoteTime.getTime() + (site.cooldown_hours * 60 * 60 * 1000));
@@ -131,12 +131,15 @@ export const GET = requireAuth(async (req: AuthenticatedRequest) => {
       [username]
     );
 
+    // Log for debugging in production
+    console.log(`Vote status for ${username}: nxCredit=${user.nxCredit}`);
+
     return NextResponse.json({
       username,
       sites,
       voteStatus,
       todayRewards,
-      currentNX: user.nxCredit || 0,
+      currentNX: user.nxCredit || 0,  // Using nxCredit which is what votes update
       totalVotes: user.votepoints || 0,
       stats: {
         daysVoted: stats?.days_voted || 0,

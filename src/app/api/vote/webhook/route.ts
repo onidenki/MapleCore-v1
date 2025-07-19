@@ -5,7 +5,7 @@ import pool, { transaction, query, queryOne } from '@/lib/db';
 import crypto from 'crypto';
 
 // Your Gtop100 pingback key (set this in your .env file)
-const GTOP100_PINGBACK_KEY = process.env.GTOP100_PINGBACK_KEY || 'maple_kaede_vote_2025';
+const GTOP100_PINGBACK_KEY = process.env.GTOP100_PINGBACK_KEY;
 
 // Vote site configurations with cooldowns
 const VOTE_SITES = {
@@ -24,6 +24,15 @@ function getClientIp(request: NextRequest): string {
   const real = request.headers.get('x-real-ip');
   const cloudflare = request.headers.get('cf-connecting-ip');
   
+  // Log all IP headers in production for debugging
+  if (process.env.NODE_ENV === 'production') {
+    console.log('IP Headers:', {
+      'x-forwarded-for': forwarded,
+      'x-real-ip': real,
+      'cf-connecting-ip': cloudflare
+    });
+  }
+  
   if (cloudflare) return cloudflare;
   if (forwarded) return forwarded.split(',')[0].trim();
   if (real) return real;
@@ -38,10 +47,12 @@ function hashIp(ip: string): string {
 
 export async function POST(request: NextRequest) {
   console.log('🔔 WEBHOOK CALLED!');
+  console.log('Environment:', process.env.NODE_ENV);
   console.log('Headers:', Object.fromEntries(request.headers.entries()));
   
   const clientIp = getClientIp(request);
   const hashedIp = hashIp(clientIp);
+  console.log('Client IP:', clientIp);
   console.log('Client IP (hashed):', hashedIp.substring(0, 16) + '...');
   
   try {
@@ -56,14 +67,17 @@ export async function POST(request: NextRequest) {
       console.log('JSON data:', jsonData);
       
       if (!jsonData || !jsonData.Common) {
+        console.log('Invalid JSON structure');
         return new Response('Invalid JSON data.', { status: 400 });
       }
 
       const pingbackkey = jsonData.pingbackkey;
+      console.log('Received pingback key:', pingbackkey);
+      console.log('Expected pingback key:', GTOP100_PINGBACK_KEY);
 
       // Verify pingback key
       if (pingbackkey !== GTOP100_PINGBACK_KEY) {
-        console.log('Invalid pingback key:', pingbackkey);
+        console.log('Invalid pingback key - mismatch');
         return new Response('Invalid pingback key.', { status: 403 });
       }
 
@@ -92,11 +106,11 @@ export async function POST(request: NextRequest) {
       const username = formData.get('pingUsername')?.toString();
       const pingbackkey = formData.get('pingbackkey')?.toString();
 
-      console.log('Parsed form data:', { success, reason, username, pingbackkey });
+      console.log('Parsed form data:', { success, reason, username, pingbackkey: pingbackkey ? 'present' : 'missing' });
 
       // Verify pingback key
       if (pingbackkey !== GTOP100_PINGBACK_KEY) {
-        console.log('Invalid pingback key:', pingbackkey);
+        console.log('Invalid pingback key in form data');
         return new Response('Invalid pingback key.', { status: 403 });
       }
 
@@ -144,9 +158,9 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Check if user exists
+      // Check if user exists - Getting nxCredit and votepoints
       const account = await queryOne<any>(
-        'SELECT id, name, nxPrepaid, votepoints FROM accounts WHERE name = ?',
+        'SELECT id, name, nxCredit, votepoints FROM accounts WHERE name = ?',
         [username]
       );
 
@@ -162,6 +176,8 @@ export async function POST(request: NextRequest) {
         
         continue;
       }
+
+      console.log(`Found account: ${account.name}, nxCredit: ${account.nxCredit} (will be updated)`);
 
       // Process vote in transaction
       try {
@@ -250,17 +266,18 @@ export async function POST(request: NextRequest) {
           }
 
           // All checks passed - process the vote
-          const currentNX = parseInt(account.nxPrepaid?.toString() || '0');
+          // Get current nxCredit and add the reward
+          const currentNX = parseInt(account.nxCredit?.toString() || '0');
           const currentVotePoints = parseInt(account.votepoints?.toString() || '0');
           const nxReward = siteConfig.nx_reward;
           const newNXAmount = currentNX + nxReward;
           const newVotePoints = currentVotePoints + 1;
 
-          console.log(`User ${username} - Current NX: ${currentNX}, Adding: ${nxReward}, New Total: ${newNXAmount}`);
+          console.log(`User ${username} - Current NX (nxCredit): ${currentNX}, Adding: ${nxReward}, New Total: ${newNXAmount}`);
 
-          // Update NX and vote points
+          // Update NX and vote points - updating nxCredit
           const [updateResult] = await connection.execute(
-            'UPDATE accounts SET nxPrepaid = ?, votepoints = ? WHERE name = ?',
+            'UPDATE accounts SET nxCredit = ?, votepoints = ? WHERE name = ?',
             [newNXAmount, newVotePoints, username]
           );
 
@@ -322,5 +339,7 @@ export async function POST(request: NextRequest) {
 
 // Handle GET requests for webhook verification
 export async function GET(request: NextRequest) {
+  const ip = getClientIp(request);
+  console.log('GET request from IP:', ip);
   return new Response('Gtop100 webhook endpoint active', { status: 200 });
 }

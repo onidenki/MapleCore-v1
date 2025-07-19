@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Character, CharacterEquipment } from '@/types/api';
 
 interface CharacterRendererProps {
@@ -8,8 +8,19 @@ interface CharacterRendererProps {
 
 const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale = 2 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [imageCache, setImageCache] = useState<{ [key: string]: HTMLImageElement | null }>({});
+  
+  const characterKey = useMemo(() => {
+    return JSON.stringify({
+      skincolor: character.skincolor,
+      gender: character.gender,
+      hair: character.hair,
+      face: character.face,
+      equipment: character.equipment
+    });
+  }, [character]);
 
   // Constants from PHP (exact same values)
   const mainX = 100;  // Centered horizontally (200/2 = 100)
@@ -81,13 +92,15 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     return value ? parseInt(value, 10) : 0;
   };
 
-  // Helper: Use/load image
+  // Helper: Use/load image - Updated to use correct canvas
   const useImage = async (location: string, x: number = 0, y: number = 0): Promise<void> => {
     if (!await exists(location)) {
       return;
     }
     
-    const ctx = canvasRef.current?.getContext('2d');
+    // Use offscreen canvas if available, otherwise main canvas
+    const canvas = offscreenCanvasRef.current || canvasRef.current;
+    const ctx = canvas?.getContext('2d');
     if (!ctx) return;
 
     // Check cache first
@@ -103,7 +116,12 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
       const img = new Image();
       img.onload = () => {
         setImageCache(prev => ({ ...prev, [location]: img }));
-        ctx.drawImage(img, x, y);
+        // Get context again in case it changed
+        const canvas = offscreenCanvasRef.current || canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, x, y);
+        }
         resolve();
       };
       img.onerror = () => {
@@ -209,23 +227,23 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
   const setHair = async (z: string): Promise<void> => {
     switch (z) {
       case "hair":
-        if (!vSlot.includes('H3'))
+        if (!vSlot || !vSlot.includes('H3'))
           await setAHair(z);
         break;
       case "hairBelowBody":
-        if (!vSlot.includes('H4'))
+        if (!vSlot || !vSlot.includes('H4'))
           await setAHair(z);
         break;
       case "hairBelowHead":
-        if (!vSlot.includes('H2'))
+        if (!vSlot || !vSlot.includes('H2'))
           await setAHair(z);
         break;
       case "hairOverHead":
-        if (!vSlot.includes('H5'))
+        if (!vSlot || !vSlot.includes('H5'))
           await setAHair(z);
         break;
       case "hairShade":
-        if (!vSlot.includes('H1'))
+        if (!vSlot || !vSlot.includes('H1'))
           await setAHair(z);
         break;
     }
@@ -252,31 +270,33 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
           if (zArray[z]) {
             for (const type of zArray[z]) {
               const hair = `_${type}`;
-              const hairElement = xml.querySelector(hair);
-              if (hairElement) {
-                const zValue = getXMLValue(xml, `${hair}._stand1.z`);
-                if (zValue === z) {
-                  const hairX = mainX + getXMLNumber(xml, `${hair}._stand1.x`);
-                  const hairY = mainY + getXMLNumber(xml, `${hair}._stand1.y`);
-                  await useImage(`Hair/0${characterData.Hair.ID}.img/default.${z}.png`, hairX, hairY);
-                }
+              // Check if the hair element exists in XML
+              const hairPath = `${hair}._stand1.z`;
+              const zValue = getXMLValue(xml, hairPath);
+              
+              if (zValue === z) {
+                const hairX = mainX + getXMLNumber(xml, `${hair}._stand1.x`);
+                const hairY = mainY + getXMLNumber(xml, `${hair}._stand1.y`);
+                await useImage(`Hair/0${characterData.Hair.ID}.img/default.${z}.png`, hairX, hairY);
               }
             }
           }
           break;
+          
         case "hairShade":
           const hair = `_${z}`;
           let sType = `_${characterData.Skin?.ID}`;
           let sK = characterData.Skin?.ID;
           
-          const shadeElement = xml.querySelector(`${hair}${sType}`);
-          if (!shadeElement) {
+          // Check if skin-specific shade exists using getXMLValue
+          const skinSpecificPath = `${hair}.${sType}.x`;
+          if (!getXMLValue(xml, skinSpecificPath)) {
             sType = "_0";
             sK = 0;
           }
           
-          const shadeHairX = mainX + getXMLNumber(xml, `${hair}${sType}.x`);
-          const shadeHairY = mainY + getXMLNumber(xml, `${hair}${sType}.y`);
+          const shadeHairX = mainX + getXMLNumber(xml, `${hair}.${sType}.x`);
+          const shadeHairY = mainY + getXMLNumber(xml, `${hair}.${sType}.y`);
           await useImage(`Hair/0${characterData.Hair.ID}.img/default.hairShade.${sK}.png`, shadeHairX, shadeHairY);
           break;
       }
@@ -348,7 +368,10 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     };
 
     if (characterData.Cap?.xml) {
-      vSlot = getXMLValue(characterData.Cap.xml, '_info.vslot') || "";
+      // Only set vSlot on first cap call
+      if (!vSlot && z === 'capeBelowBody') {
+        vSlot = getXMLValue(characterData.Cap.xml, '_info.vslot') || "";
+      }
       
       const types = zArray[z] || [];
       for (const type of types) {
@@ -476,19 +499,31 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // setPants method
+  // setPants method - FIXED positioning
   const setPants = async (): Promise<void> => {
     if (!characterData.Pants?.ID) {
+      // Default pants when no pants equipped
       const defaultPantsId = defaultClothes[characterData.Gender?.ID as number]?.pants;
       if (defaultPantsId) {
-        await useImage(`Pants/0${defaultPantsId}.img/stand1.0.pants.png`, mainX - 3, neckY + 1);
+        // Load default pants XML to get proper coordinates
+        const defaultXml = await XMLoader(`Pants/0${defaultPantsId}.img/`);
+        if (defaultXml) {
+          const pantsX = mainX + getXMLNumber(defaultXml, '_pants._stand1.x');
+          const pantsY = neckY + getXMLNumber(defaultXml, '_pants._stand1.y');
+          await useImage(`Pants/0${defaultPantsId}.img/stand1.0.pants.png`, pantsX, pantsY);
+        } else {
+          // Fallback if no XML (shouldn't happen)
+          await useImage(`Pants/0${defaultPantsId}.img/stand1.0.pants.png`, mainX, neckY);
+        }
       }
     } else if ((characterData.Coat?.ID as number) >= 1050000) {
+      // Don't render pants if wearing a longcoat
       return;
     } else if (characterData.Pants.xml) {
+      // Regular pants with proper XML coordinates
       const snd = `_stand${stand}`;
-      const pantsX = mainX + getXMLNumber(characterData.Pants.xml, `_pants${snd}.x`);
-      const pantsY = neckY + getXMLNumber(characterData.Pants.xml, `_pants${snd}.y`);
+      const pantsX = mainX + getXMLNumber(characterData.Pants.xml, `_pants.${snd}.x`);
+      const pantsY = neckY + getXMLNumber(characterData.Pants.xml, `_pants.${snd}.y`);
 
       if (await exists(`Pants/0${characterData.Pants.ID}.img/stand2.0.pants.png`) && stand === 2) {
         await useImage(`Pants/0${characterData.Pants.ID}.img/stand2.0.pants.png`, pantsX, pantsY);
@@ -673,24 +708,53 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
     }
   };
 
-  // Main render function
+  // Main render function - with double buffering
   const renderCharacter = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // Don't render if we don't have basic character data
+    if (!character || !character.skincolor === undefined || !character.gender === undefined) {
+      console.log('Character data not ready, skipping render');
+      return;
+    }
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    setIsLoading(true);
+    // Clear the main canvas first
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
+    // Create off-screen canvas for double buffering
+    const offscreenCanvas = document.createElement('canvas');
+    offscreenCanvas.width = CANVAS_WIDTH;
+    offscreenCanvas.height = CANVAS_HEIGHT;
+    const offscreenCtx = offscreenCanvas.getContext('2d');
+    if (!offscreenCtx) return;
+
+    // Clear offscreen canvas
+    offscreenCtx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    
+    // Set the offscreen canvas reference
+    offscreenCanvasRef.current = offscreenCanvas;
+
+    setIsLoading(true);
+    
     try {
+      // Reset character variables
+      characterData = {};
+      stand = 1;
+      vSlot = "";
+      
+      // Add a small delay to ensure component is mounted
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       await setVaribles();
       
       const weaponId = character.equipment?.weapon || 1;
       await setWepInfo(weaponId);
 
-      // Render sequence
+      // Render sequence - EXACT ORDER FROM PHP create.php
       await setWeapon('weaponBelowBody');
       await setCap('capeBelowBody');
       await setCap('capBelowHead');
@@ -707,7 +771,7 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
       await createBody('body');
       await setShoes('shoes');
       await setShoes('weaponOverBody');
-      await setGlove('l');
+      await setGlove('l', 1);
       await setWeapon('weaponOverBody');
       await setPants();
       await setCoat('mail');
@@ -762,16 +826,38 @@ const CharacterRenderer: React.FC<CharacterRendererProps> = ({ character, scale 
       await setWeapon('emotionOverBody');
       await setWeapon('characterEnd');
 
+      // Clear the offscreen canvas reference
+      offscreenCanvasRef.current = null;
+
+      // Only copy to main canvas if we still have a valid reference
+      if (canvasRef.current) {
+        const finalCtx = canvasRef.current.getContext('2d');
+        if (finalCtx) {
+          finalCtx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+          finalCtx.drawImage(offscreenCanvas, 0, 0);
+        }
+      }
+
     } catch (error) {
       console.error('Render Error:', error);
+      // Clear the offscreen canvas reference in case of error
+      offscreenCanvasRef.current = null;
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Update the useEffect in CharacterRenderer
   useEffect(() => {
-    renderCharacter();
-  }, [character]);
+    // Add a debounce to prevent rapid re-renders
+    const timeoutId = setTimeout(() => {
+      if (character && character.skincolor !== undefined && character.gender !== undefined) {
+        renderCharacter();
+      }
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [characterKey]);
 
   return (
     <div className="relative inline-block">

@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
         g.name as guild_name
       FROM characters c
       LEFT JOIN guilds g ON c.guildid = g.guildid AND c.guildid > 0
-      WHERE c.gm >= 0
+      WHERE c.gm = 0
       ORDER BY c.level DESC, c.exp DESC
       LIMIT 100`
     );
@@ -114,12 +114,12 @@ export async function GET(request: NextRequest) {
             (
               SELECT COUNT(*) + 1 
               FROM characters c2 
-              WHERE c2.gm >= 0
+              WHERE c2.gm = 0
               AND (c2.level > c.level OR (c2.level = c.level AND c2.exp > c.exp))
             ) as user_rank
           FROM characters c
           LEFT JOIN guilds g ON c.guildid = g.guildid AND c.guildid > 0
-          WHERE c.accountid = ? AND c.gm >= 0
+          WHERE c.accountid = ? AND c.gm = 0
           ORDER BY c.level DESC, c.exp DESC
           LIMIT 1`,
           [currentUserId]
@@ -172,11 +172,13 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
-// Helper function to convert job ID to job name
+// Helper function to convert job ID to job name - UPDATED with your server's jobs
 function getJobName(jobId: number): string {
   const jobMap: { [key: number]: string } = {
+    // Beginner
     0: 'Beginner',
+    
+    // Warriors
     100: 'Warrior',
     110: 'Fighter',
     111: 'Crusader',
@@ -187,23 +189,29 @@ function getJobName(jobId: number): string {
     130: 'Spearman',
     131: 'Dragon Knight',
     132: 'Dark Knight',
+    
+    // Magicians
     200: 'Magician',
     210: 'F/P Wizard',
     211: 'F/P Mage',
-    212: 'F/P Archmage',
+    212: 'F/P Arch Mage',
     220: 'I/L Wizard',
     221: 'I/L Mage',
-    222: 'I/L Archmage',
+    222: 'I/L Arch Mage',
     230: 'Cleric',
     231: 'Priest',
     232: 'Bishop',
+    
+    // Bowmen
     300: 'Bowman',
     310: 'Hunter',
     311: 'Ranger',
-    312: 'Bow Master',
+    312: 'Bowmaster',
     320: 'Crossbowman',
     321: 'Sniper',
-    322: 'Crossbow Master',
+    322: 'Marksman',
+    
+    // Thieves
     400: 'Thief',
     410: 'Assassin',
     411: 'Hermit',
@@ -211,13 +219,63 @@ function getJobName(jobId: number): string {
     420: 'Bandit',
     421: 'Chief Bandit',
     422: 'Shadower',
+    
+    // Pirates
     500: 'Pirate',
     510: 'Brawler',
     511: 'Marauder',
     512: 'Buccaneer',
     520: 'Gunslinger',
     521: 'Outlaw',
-    522: 'Corsair'
+    522: 'Corsair',
+    
+    // Special Jobs
+    800: 'Maple Leaf Brigadier',
+    900: 'GM',
+    910: 'SuperGM',
+    
+    // Cygnus Knights
+    1000: 'Noblesse',
+    1100: 'Dawn Warrior',
+    1110: 'Dawn Warrior 2nd',
+    1111: 'Dawn Warrior 3rd',
+    1112: 'Dawn Warrior 4th',
+    1200: 'Blaze Wizard',
+    1210: 'Blaze Wizard 2nd',
+    1211: 'Blaze Wizard 3rd',
+    1212: 'Blaze Wizard 4th',
+    1300: 'Wind Archer',
+    1310: 'Wind Archer 2nd',
+    1311: 'Wind Archer 3rd',
+    1312: 'Wind Archer 4th',
+    1400: 'Night Walker',
+    1410: 'Night Walker 2nd',
+    1411: 'Night Walker 3rd',
+    1412: 'Night Walker 4th',
+    1500: 'Thunder Breaker',
+    1510: 'Thunder Breaker 2nd',
+    1511: 'Thunder Breaker 3rd',
+    1512: 'Thunder Breaker 4th',
+    
+    // Legends
+    2000: 'Legend',
+    2001: 'Evan',
+    2100: 'Aran',
+    2110: 'Aran 2nd',
+    2111: 'Aran 3rd',
+    2112: 'Aran 4th',
+    
+    // Evan
+    2200: 'Evan 1st Growth',
+    2210: 'Evan 2nd Growth',
+    2211: 'Evan 3rd Growth',
+    2212: 'Evan 4th Growth',
+    2213: 'Evan 5th Growth',
+    2214: 'Evan 6th Growth',
+    2215: 'Evan 7th Growth',
+    2216: 'Evan 8th Growth',
+    2217: 'Evan 9th Growth',
+    2218: 'Evan 10th Growth'
   };
 
   return jobMap[jobId] || 'Unknown';

@@ -104,7 +104,7 @@ export const secureQueries = {
 
   getUserById: async (userId: number) => {
     return queryOne(
-      'SELECT id, name, email, createdat, nxCredit, nxPrepaid, votepoints FROM accounts WHERE id = ? LIMIT 1',
+      'SELECT id, name, email, createdat, nxCredit, votepoints FROM accounts WHERE id = ? LIMIT 1',
       [userId]
     );
   },
@@ -278,7 +278,7 @@ export const secureQueries = {
         [userId, site, nxReward]
       );
       
-      // Update user NX
+      // Update user NX (nxCredit) and vote points
       await conn.execute(
         'UPDATE accounts SET nxCredit = nxCredit + ?, votepoints = votepoints + 1 WHERE id = ?',
         [nxReward, userId]
